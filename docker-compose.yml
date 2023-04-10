@@ -1,0 +1,72 @@
+version: '3.9'
+
+services:
+  server:
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+    container_name: ${PROJECT_PREFIX}_server
+    restart: unless-stopped
+    depends_on:
+      - postgres
+    networks:
+      - default
+    ports:
+      - "9000:9000"
+    volumes:
+      - ./server:/usr/src/api
+    healthcheck:
+      test: [ "CMD", "curl", "http://server:9000" ]
+      interval: 5s
+      timeout: 3s
+      retries: 6
+
+  client:
+    build:
+      context: ./client
+      dockerfile: Dockerfile
+    container_name: ${PROJECT_PREFIX}_client
+    volumes:
+      - ./client:/usr/src/app
+    networks:
+      - default
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:15.2-alpine3.17
+    container_name: ${PROJECT_PREFIX}_db
+    environment:
+      POSTGRES_DB: "${POSTGRES_DB}"
+      POSTGRES_USER: "${POSTGRES_USER}"
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD}"
+      PGDATA: "/var/lib/postgresql/data/pgdata"
+    volumes:
+      - ./docker/data/postgres/pgdata:/var/lib/postgresql/data/pgdata
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: [ "CMD_SHELL","pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+
+  nginx:
+    build:
+      context: ./docker/containers/nginx
+      dockerfile: ./Dockerfile
+    container_name: ${PROJECT_PREFIX}_webserver
+    ports:
+      - "80:80"
+    depends_on:
+      client:
+        condition: service_started
+      server:
+        condition: service_started
+    networks:
+      - default
+
+networks:
+  default:
+    driver: bridge
